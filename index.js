@@ -3,6 +3,7 @@ const cors = require("cors");
 const app = express();
 require("dotenv").config();
 const { MongoClient, ServerApiVersion } = require("mongodb");
+const stripe = require("stripe")(process.env.STRIPE_SECRET);
 const port = process.env.PORT || 3000;
 
 // middleware
@@ -25,6 +26,7 @@ async function run() {
     await client.connect();
     const db = client.db("life_lessons_db");
     const usersCollection = db.collection("users");
+    const lessonsCollection = db.collection("lessons");
 
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -39,6 +41,99 @@ async function run() {
       const result = await usersCollection.insertOne(user);
       res.send(result);
     });
+
+    app.post("/lessons", async (req, res) => {
+      const lessonData = req.body;
+      const result = await lessonsCollection.insertOne(lessonData);
+      res.send(result);
+    });
+
+    // app.post("/create-checkout-session", async (req, res) => {
+    //   const paymentInfo = req.body;
+    //   const session = await stripe.checkout.session.create({
+    //     line_items: [
+    //       {
+    //         // Provide the exact Price ID (for example, price_1234) of the product you want to sell
+    //         price: "{{PRICE_ID}}",
+    //         quantity: 1,
+    //       },
+    //     ],
+    //     customer_email: email,
+    //     mode: "payment",
+    //     success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success`,
+    //   });
+    // });
+    // app.post("/create-checkout-session", async (req, res) => {
+    //   const { email } = req.body;
+
+    //   try {
+    //     const session = await stripe.checkout.sessions.create({
+    //       payment_method_types: ["card"],
+    //       mode: "payment",
+    //       line_items: [
+    //         {
+    //           price_data: {
+    //             currency: "usd",
+    //             unit_amount: 1500 * 100, // ৳1500
+    //             product_data: {
+    //               name: "Premium Membership",
+    //             },
+    //           },
+    //           quantity: 1,
+    //         },
+    //       ],
+    //       success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?email=${email}`,
+    //       cancel_url: `${process.env.SITE_DOMAIN}/dashborad/payment-cancel`,
+    //     });
+
+    //     res.send({ url: session.url });
+    //   } catch (error) {
+    //     console.log(error);
+    //     res.status(500).send({ message: "Error creating session" });
+    //   }
+    // });
+    app.post("/create-checkout-session", async (req, res) => {
+      const { email } = req.body; // frontend থেকে পাঠানো হবে
+
+      try {
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ["card"],
+          customer_email: email,
+          line_items: [
+            {
+              price_data: {
+                currency: "bdt",
+                product_data: {
+                  name: "Lifetime Premium Access",
+                },
+                unit_amount: 150000, // ৳1500 * 100 (paisa)
+              },
+              quantity: 1,
+            },
+          ],
+          mode: "payment",
+          success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?email=${email}`,
+          cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancel`,
+        });
+
+        res.json({ url: session.url });
+      } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: "Stripe session failed" });
+      }
+    });
+
+    app.patch("/users/make-premium", async (req, res) => {
+      const { email } = req.body;
+
+      const result = await usersCollection.updateOne(
+        { email },
+        { $set: { isPremium: true } }
+      );
+
+      res.send(result);
+    });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
