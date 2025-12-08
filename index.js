@@ -48,6 +48,12 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/lessons", async (req, res) => {
+      const cursor = lessonsCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+
     // app.post("/create-checkout-session", async (req, res) => {
     //   const paymentInfo = req.body;
     //   const session = await stripe.checkout.session.create({
