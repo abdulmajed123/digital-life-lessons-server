@@ -60,6 +60,30 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/my-lessons", async (req, res) => {
+      const email = req.query.email;
+      const result = await lessonsCollection.find({ email: email }).toArray();
+      res.send(result);
+    });
+
+    app.put("/lessons/:id", async (req, res) => {
+      const id = req.params.id;
+      const lessonData = req.body;
+      const query = { _id: new ObjectId(id) };
+      const update = {
+        $set: lessonData,
+      };
+      const result = await lessonsCollection.updateOne(query, update);
+      res.send(result);
+    });
+
+    app.delete("/lessons/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await lessonsCollection.deleteOne(query);
+      res.send(result);
+    });
+
     // app.post("/create-checkout-session", async (req, res) => {
     //   const paymentInfo = req.body;
     //   const session = await stripe.checkout.session.create({
