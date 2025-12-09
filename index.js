@@ -41,6 +41,102 @@ async function run() {
       const result = await usersCollection.insertOne(user);
       res.send(result);
     });
+    app.get("/users", async (req, res) => {
+      const cursor = usersCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+    app.patch("/users/:id", async (req, res) => {
+      const id = req.params.id;
+      const roleInfo = req.body;
+      const query = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          role: roleInfo.role,
+        },
+      };
+      const result = await usersCollection.updateOne(query, updateDoc);
+      res.send(result);
+    });
+
+    // app.get("/users/create-lessons", async (req, res) => {
+    //   try {
+    //     const usersWithLessonCount = await User.aggregate([
+    //       {
+    //         $lookup: {
+    //           from: "lessons",
+    //           localField: "_id",
+    //           foreignField: "creator",
+    //           as: "lessons",
+    //         },
+    //       },
+    //       {
+    //         $project: {
+    //           name: 1,
+    //           email: 1,
+    //           role: 1,
+    //           totalLessons: { $size: "$lessons" },
+    //         },
+    //       },
+    //     ]);
+
+    //     res.status(200).json(usersWithLessonCount);
+    //   } catch (err) {
+    //     console.error(err);
+    //     res.status(500).json({ message: "Server error" });
+    //   }
+    // });
+
+    // app.get("/users/create-lessons", async (req, res) => {
+    //   const email = req.query.email;
+
+    //   const pipeline = [
+    //     {
+    //       $match: {
+    //         email: email,
+    //       },
+    //     },
+    //     {
+    //       $lookup: {
+    //         from: "lessons",
+    //         localField: "email",
+    //         foreignField: "email",
+    //         as: "userLessons",
+    //       },
+    //     },
+    //   ];
+    // });
+
+    // app.get("/users/create-lessons", async (req, res) => {
+    //   const email = req.query.email;
+
+    //   try {
+    //     const userWithLessons = await User.aggregate([
+    //       { $match: { email: email } }, // user filter
+    //       {
+    //         $lookup: {
+    //           from: "lessons",
+    //           localField: "email", // User এর email
+    //           foreignField: "email", // Lessons collection এ email field
+    //           as: "userLessons", // এই নামে array হবে
+    //         },
+    //       },
+    //       {
+    //         $project: {
+    //           name: 1,
+    //           email: 1,
+    //           userLessons: 1,
+    //           totalLessons: { $size: "$userLessons" },
+    //         },
+    //       },
+    //     ]);
+
+    //     res.status(200).json(userWithLessons);
+    //   } catch (err) {
+    //     console.error(err);
+    //     res.status(500).json({ message: "Server error" });
+    //   }
+    // });
 
     app.post("/lessons", async (req, res) => {
       const lessonData = req.body;
@@ -148,7 +244,7 @@ async function run() {
             },
           ],
           mode: "payment",
-          success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?email=${email}`,
+          success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancel`,
         });
 
@@ -159,15 +255,35 @@ async function run() {
       }
     });
 
+    // app.patch("/users/make-premium", async (req, res) => {
+    //   const sessionId = req.query.session_id;
+    //   console.log("session id", sessionId);
+    //   const session = await stripe.checkout.sessions.retrieve(sessionId);
+    //   res.send({ success: true });
+    // });
+
     app.patch("/users/make-premium", async (req, res) => {
-      const { email } = req.body;
+      const sessionId = req.query.session_id;
+      try {
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+        const userEmail = session.customer_email;
 
-      const result = await usersCollection.updateOne(
-        { email },
-        { $set: { isPremium: true } }
-      );
+        if (!userEmail) {
+          return res
+            .status(400)
+            .json({ success: false, message: "No email in session" });
+        }
 
-      res.send(result);
+        const result = await usersCollection.updateOne(
+          { email: userEmail },
+          { $set: { isPremium: true } }
+        );
+
+        res.status(200).json({ success: true, updated: result });
+      } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Server error" });
+      }
     });
 
     // Send a ping to confirm a successful connection
