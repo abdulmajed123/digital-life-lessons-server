@@ -27,6 +27,7 @@ async function run() {
     const db = client.db("life_lessons_db");
     const usersCollection = db.collection("users");
     const lessonsCollection = db.collection("lessons");
+    const lessonsReportsCollection = db.collection("reportedLessons");
 
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -57,6 +58,12 @@ async function run() {
       };
       const result = await usersCollection.updateOne(query, updateDoc);
       res.send(result);
+    });
+    app.get("/users/:email/role", async (req, res) => {
+      const email = req.params.email;
+      const query = { email };
+      const user = await usersCollection.findOne(query);
+      res.send({ role: user?.role || "user" });
     });
 
     // app.get("/users/create-lessons", async (req, res) => {
@@ -143,6 +150,11 @@ async function run() {
       const result = await lessonsCollection.insertOne(lessonData);
       res.send(result);
     });
+    app.post("/lessonsReports", async (req, res) => {
+      const report = req.body;
+      const result = await lessonsReportsCollection.insertOne(report);
+      res.send(result);
+    });
 
     app.get("/lessons", async (req, res) => {
       const cursor = lessonsCollection.find();
@@ -152,8 +164,16 @@ async function run() {
     app.get("/lessons/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
-      const result = await lessonsCollection.findOne(query);
-      res.send(result);
+      const lesson = await lessonsCollection.findOne(query);
+      if (!lesson) {
+        return res.status(404).send({ error: "Lesson not found" });
+      }
+
+      // Count how many lessons this author has created
+      const totalLessons = await lessonsCollection.countDocuments({
+        authorEmail: lesson.authorEmail,
+      });
+      res.send({ ...lesson, totalLessons });
     });
 
     app.get("/my-lessons", async (req, res) => {
@@ -165,6 +185,7 @@ async function run() {
     app.put("/lessons/:id", async (req, res) => {
       const id = req.params.id;
       const lessonData = req.body;
+      lessonData.updatedAt = new Date().toISOString();
       const query = { _id: new ObjectId(id) };
       const update = {
         $set: lessonData,
@@ -284,6 +305,56 @@ async function run() {
         console.error(err);
         res.status(500).json({ success: false, message: "Server error" });
       }
+    });
+
+    app.patch("/lessons/:id/like", async (req, res) => {
+      const { id } = req.params;
+      const { userId } = req.body;
+
+      const lesson = await lessonsCollection.findOne({ _id: new ObjectId(id) });
+      if (!lesson) return res.status(404).send({ error: "Lesson not found" });
+
+      let likes = lesson.likes || [];
+      if (likes.includes(userId)) {
+        likes = likes.filter((id) => id !== userId); // Remove like
+      } else {
+        likes.push(userId); // Add like
+      }
+
+      const likesCount = likes.length;
+
+      await lessonsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { likes, likesCount } }
+      );
+
+      res.send({ success: true, likesCount });
+    });
+
+    // GET /lessons/similar/:lessonId
+    app.get("/lessons/similar/:lessonId", async (req, res) => {
+      const lessonId = req.params.lessonId;
+
+      // Get current lesson first
+      const currentLesson = await lessonsCollection.findOne({
+        _id: new ObjectId(lessonId),
+      });
+      if (!currentLesson)
+        return res.status(404).send({ error: "Lesson not found" });
+
+      // Find similar lessons (same category or same emotional tone, exclude current lesson)
+      const similarLessons = await lessonsCollection
+        .find({
+          _id: { $ne: new ObjectId(lessonId) },
+          $or: [
+            { category: currentLesson.category },
+            { emotionalTone: currentLesson.emotionalTone },
+          ],
+        })
+        .limit(6)
+        .toArray();
+
+      res.send(similarLessons);
     });
 
     // Send a ping to confirm a successful connection
