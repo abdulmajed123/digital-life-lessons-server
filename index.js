@@ -28,6 +28,7 @@ async function run() {
     const usersCollection = db.collection("users");
     const lessonsCollection = db.collection("lessons");
     const lessonsReportsCollection = db.collection("reportedLessons");
+    const favoritesCollection = db.collection("favouritesLessons");
 
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -355,6 +356,107 @@ async function run() {
         .toArray();
 
       res.send(similarLessons);
+    });
+
+    // app.post("/favorites", async (req, res) => {
+    //   const { lessonId, userEmail } = req.body;
+
+    //   if (!lessonId || !userEmail) {
+    //     return res.send({ success: false, message: "Invalid data" });
+    //   }
+
+    //   // Already saved?
+    //   const exists = await favoritesCollection.findOne({ lessonId, userEmail });
+
+    //   if (exists) {
+    //     return res.send({ message: "Already saved", exists: true });
+    //   }
+
+    //   // Save favorite
+    //   const result = await favoritesCollection.insertOne({
+    //     lessonId,
+    //     userEmail,
+    //     lessonTitle: lesson.title,
+    //     lessonDescription: lesson.description,
+    //     category: lesson.category,
+    //     emotionalTone: lesson.emotionalTone,
+    //     creator: lesson.creator,
+    //     accessLevel: lesson.accessLevel,
+    //     createdAt: new Date(),
+
+    //     createdAt: new Date(),
+    //   });
+
+    //   res.send(result);
+    // });
+
+    app.post("/favorites", async (req, res) => {
+      const { lessonId, userEmail } = req.body;
+
+      // 1️⃣ Check if already exists
+      const exists = await favoritesCollection.findOne({ lessonId, userEmail });
+      if (exists) {
+        return res.send({ message: "Already saved" });
+      }
+
+      // 2️⃣ Find the Lesson data
+      const lesson = await lessonsCollection.findOne({
+        _id: new ObjectId(lessonId),
+      });
+
+      if (!lesson) {
+        return res.status(404).send({ message: "Lesson not found" });
+      }
+
+      // 3️⃣ Save everything in favorites collection
+      const favoriteData = {
+        lessonId,
+        userEmail,
+        lessonTitle: lesson.title,
+        lessonDescription: lesson.description,
+        category: lesson.category,
+        emotionalTone: lesson.emotionalTone,
+        creator: lesson.authorName,
+        accessLevel: lesson.accessLevel,
+        createdAt: new Date(),
+      };
+
+      const result = await favoritesCollection.insertOne(favoriteData);
+
+      res.send(result);
+    });
+
+    app.delete("/favorites", async (req, res) => {
+      const { lessonId, userEmail } = req.body;
+
+      if (!lessonId || !userEmail) {
+        return res.send({ success: false, message: "Invalid data" });
+      }
+
+      const result = await favoritesCollection.deleteOne({
+        lessonId,
+        userEmail,
+      });
+
+      res.send(result);
+    });
+
+    app.get("/favorites/:lessonId/:email", async (req, res) => {
+      const { lessonId, email } = req.params;
+
+      // Check if user saved this lesson
+      const fav = await favoritesCollection.findOne({
+        lessonId,
+        userEmail: email,
+      });
+
+      // Count how many total favorites this lesson has
+      const count = await favoritesCollection.countDocuments({ lessonId });
+
+      res.send({
+        isFavorite: !!fav,
+        favoritesCount: count,
+      });
     });
 
     // Send a ping to confirm a successful connection
