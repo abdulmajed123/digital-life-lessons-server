@@ -177,10 +177,36 @@ async function run() {
       res.send({ ...lesson, totalLessons });
     });
 
-    app.get("/my-lessons", async (req, res) => {
-      const email = req.query.email;
-      const result = await lessonsCollection.find({ email: email }).toArray();
-      res.send(result);
+    // app.get("/my-lessons/:email", async (req, res) => {
+    //   const email = req.params.email;
+    //   const result = await lessonsCollection
+    //     .find({
+    //       authorEmail: email,
+    //     })
+    //     .toArray();
+    //   res.send(result);
+    // });
+
+    app.get("/my-lessons/:email", async (req, res) => {
+      const email = req.params.email;
+
+      try {
+        const lessons = await lessonsCollection
+          .find({ authorEmail: email })
+          .toArray();
+
+        const totalLessons = await lessonsCollection.countDocuments({
+          authorEmail: email,
+        });
+
+        res.send({
+          totalLessons,
+          lessons,
+        });
+      } catch (error) {
+        console.log(error);
+        res.status(500).send({ message: "Something went wrong" });
+      }
     });
 
     app.put("/lessons/:id", async (req, res) => {
@@ -333,6 +359,9 @@ async function run() {
     });
 
     // GET /lessons/similar/:lessonId
+
+    // PATCH /lessons/:id/like
+
     app.get("/lessons/similar/:lessonId", async (req, res) => {
       const lessonId = req.params.lessonId;
 
@@ -359,47 +388,66 @@ async function run() {
     });
 
     // app.post("/favorites", async (req, res) => {
-    //   const { lessonId, userEmail } = req.body;
+    //   const { lessonId, email } = req.body;
 
-    //   if (!lessonId || !userEmail) {
-    //     return res.send({ success: false, message: "Invalid data" });
-    //   }
-
-    //   // Already saved?
-    //   const exists = await favoritesCollection.findOne({ lessonId, userEmail });
-
+    //   // 1️⃣ Check if already exists
+    //   const exists = await favoritesCollection.findOne({ lessonId, email });
     //   if (exists) {
-    //     return res.send({ message: "Already saved", exists: true });
+    //     return res.send({ message: "Already saved" });
     //   }
 
-    //   // Save favorite
-    //   const result = await favoritesCollection.insertOne({
+    //   // 2️⃣ Find the Lesson data
+    //   const lesson = await lessonsCollection.findOne({
+    //     _id: new ObjectId(lessonId),
+    //   });
+
+    //   if (!lesson) {
+    //     return res.status(404).send({ message: "Lesson not found" });
+    //   }
+
+    //   // 3️⃣ Save everything in favorites collection
+    //   const favoriteData = {
     //     lessonId,
-    //     userEmail,
+    //     email,
     //     lessonTitle: lesson.title,
     //     lessonDescription: lesson.description,
     //     category: lesson.category,
     //     emotionalTone: lesson.emotionalTone,
-    //     creator: lesson.creator,
+    //     creator: lesson.authorName,
+    //     authorImage: lesson.authorPhoto,
     //     accessLevel: lesson.accessLevel,
     //     createdAt: new Date(),
+    //   };
 
-    //     createdAt: new Date(),
+    //   const result = await favoritesCollection.insertOne(favoriteData);
+
+    //   res.send(result);
+    // });
+
+    // app.delete("/favorites", async (req, res) => {
+    //   const { lessonId, email } = req.body;
+
+    //   if (!lessonId || !email) {
+    //     return res.send({ success: false, message: "Invalid data" });
+    //   }
+
+    //   const result = await favoritesCollection.deleteOne({
+    //     lessonId,
+    //     email,
     //   });
 
     //   res.send(result);
     // });
 
     app.post("/favorites", async (req, res) => {
-      const { lessonId, userEmail } = req.body;
+      const { lessonId, email } = req.body;
 
-      // 1️⃣ Check if already exists
-      const exists = await favoritesCollection.findOne({ lessonId, userEmail });
+      // Check if already exists
+      const exists = await favoritesCollection.findOne({ lessonId, email });
       if (exists) {
         return res.send({ message: "Already saved" });
       }
 
-      // 2️⃣ Find the Lesson data
       const lesson = await lessonsCollection.findOne({
         _id: new ObjectId(lessonId),
       });
@@ -408,15 +456,15 @@ async function run() {
         return res.status(404).send({ message: "Lesson not found" });
       }
 
-      // 3️⃣ Save everything in favorites collection
       const favoriteData = {
         lessonId,
-        userEmail,
+        email,
         lessonTitle: lesson.title,
         lessonDescription: lesson.description,
         category: lesson.category,
         emotionalTone: lesson.emotionalTone,
         creator: lesson.authorName,
+        authorImage: lesson.authorPhoto,
         accessLevel: lesson.accessLevel,
         createdAt: new Date(),
       };
@@ -425,17 +473,16 @@ async function run() {
 
       res.send(result);
     });
-
     app.delete("/favorites", async (req, res) => {
-      const { lessonId, userEmail } = req.body;
+      const { lessonId, email } = req.body;
 
-      if (!lessonId || !userEmail) {
+      if (!lessonId || !email) {
         return res.send({ success: false, message: "Invalid data" });
       }
 
       const result = await favoritesCollection.deleteOne({
         lessonId,
-        userEmail,
+        email,
       });
 
       res.send(result);
@@ -457,6 +504,55 @@ async function run() {
         isFavorite: !!fav,
         favoritesCount: count,
       });
+    });
+
+    // GET /favorites/user/:email
+    app.get("/favorites/:email", async (req, res) => {
+      const email = req.params.email;
+      const favorites = await favoritesCollection
+        .find({ email: email })
+        .toArray();
+      res.send(favorites);
+    });
+
+    // DELETE favorite by ID
+    app.delete("/favorites/:id", async (req, res) => {
+      const id = req.params.id;
+
+      try {
+        const result = await favoritesCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+
+        if (result.deletedCount > 0) {
+          res.send({ success: true, message: "Favorite removed successfully" });
+        } else {
+          res
+            .status(404)
+            .send({ success: false, message: "Favorite not found" });
+        }
+      } catch (err) {
+        console.error(err);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to remove favorite" });
+      }
+    });
+
+    // Weekly Analytics (New)
+    app.get("/analytics/weekly/:email", async (req, res) => {
+      const email = req.params.email;
+      const today = new Date();
+      const last7 = new Date();
+      last7.setDate(today.getDate() - 6);
+
+      const pipeline = [
+        { $match: { authorEmail: email, createdAt: { $gte: last7 } } },
+        { $group: { _id: { $dayOfWeek: "$createdAt" }, count: { $sum: 1 } } },
+      ];
+
+      const result = await lessonsCollection.aggregate(pipeline).toArray();
+      res.send(result);
     });
 
     // Send a ping to confirm a successful connection
